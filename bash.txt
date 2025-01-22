@@ -1,0 +1,1 @@
+pyinstaller --onefile --add-data "settings.json;." --name avito_project  main.py
