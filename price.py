@@ -156,8 +156,8 @@ class AvitoFilesHandler:
             item["Прайс"] = None
             item["Цена"] = item.pop("Цена без распродажи")
             item["Расп"] = item.pop("Цена распродажи")
-            if item["Цена"]:
-                item["д10%"] = round(item["Цена"] * 0.9, 2)
+            # if item["Цена"]:
+            #     item["д10%"] = round(item["Цена"] * 0.9, 2)
             # Замена наименований городов на аббревиатуры 
             for city in cities:
                 for header in headers:
@@ -172,10 +172,13 @@ class AvitoFilesHandler:
                 item["Бренд"] = ""
             if item["Товарная группа"] in [None, 0]:
                 item["Товарная группа"] = ""
+            item["К2"] = ""
+            item["К2_Цвет"] = ""
             
         # for i in range(0, 2):
         #     pprint(price[i])
         return price
+
 
     def update_price_from_products(self, price):
         # price = self.read_ostatki()
@@ -203,7 +206,7 @@ class AvitoFilesHandler:
 
         # Создаем словарь для значений из таблицы "Товар"
         goods_data = self.excel_to_dict(
-            excel_path=self.settings["Настройки"]["Таблица_с_товарами"], key_col_header="Артикул", key_upper=True)
+            excel_path=self.settings["Настройки"]["Таблица_с_товарами"], key_col_header="Артикул", key_upper=True, copy_fill= True)
         for key in goods_data:
             goods_data[key]["is_correct"] = False
             if goods_data[key]["Артикул"] is not None:
@@ -239,9 +242,12 @@ class AvitoFilesHandler:
 
                 item["Прайс"] = goods_data[article_value]["01: Price"]
                 item["AvitoStatus"] = goods_data[article_value]["AvitoStatus"]
-
+                # Ссылки
                 for code in range(1, avito_count + 1):
                     item[f"Link{code}"] = link_0.replace("{ID_XX}", str(goods_data[article_value][f"{code:02}: AvitoId"]))
+                # Комментарии
+                item["К2"] = goods_data[article_value]["Комментарий 2"]
+                item["К2_Цвет"] = goods_data[article_value]["fill_dict"]["Комментарий 2"]
 
         # self.apply_filters_to_price_sheet(price_sheet, article_col_price, brand_col_price, product_group_col_price)
 
@@ -313,8 +319,29 @@ class AvitoFilesHandler:
         return sorted_price
     
 
+    def add_discounts_to_price(self, price):
+        # Получаем скидки из настроек
+        discounts = self.settings["Скидка"]
+        # for discount in discounts:
+        #     print(f"pg: {discount}, discount: {discounts[discount]}")
+        # Проходим по всем товарам, берем товарную группу и определяем, есть ли для неё скидка
+        for i in range(0, len(price)):  # Начинаем с 2-й строки
+            product_group = price[i]["Товарная группа"]
+            product_price = price[i]["Цена"]
+            if product_group and product_price:  # Проверяем, что значение не None
+                for key in discounts:
+                    if key == product_group:
+                        # price[i]["Скидка"] = discounts[key]
+                        price[i]["Скидка"] = round(product_price * discounts[key], 2)
+                        break
+
+        print(f"Для 'Прайс' применены скидки.")
+
+        return price
+    
+
     def create_price_xlsx(self):
-        hidden_cols = ["ID_01","Avitoid_01","Avitoid_02","Avitoid_03","д10%"]
+        hidden_cols = ["ID_01","Avitoid_01","Avitoid_02","Avitoid_03"]
         cell_border_color = self.settings["Цвет"]["Граница товара"]
         pg_border_color = self.settings["Цвет"]["Граница товарной группы"]
         model_border_color = self.settings["Цвет"]["Граница модели"]
@@ -353,6 +380,7 @@ class AvitoFilesHandler:
         price = self.read_ostatki()
         price = self.update_price_from_products(price)
         price = self.apply_filters_to_price(price)
+        price = self.add_discounts_to_price(price)
         price = self.sort_price(price)
         # pprint(orders_data)
 
@@ -447,6 +475,9 @@ class AvitoFilesHandler:
                         else:
                             sheet.cell(row=row_n, column=col_n).fill = PatternFill(start_color='F2DCD7', end_color='F2DCD7',
                                                                             fill_type='solid')
+                    if header == "К2" and item["К2_Цвет"]:
+                        sheet.cell(row=row_n, column=col_n).fill = PatternFill(start_color=item["К2_Цвет"], end_color=item["К2_Цвет"],
+                                                                            fill_type='solid')
                 # Добавляем форматирование для городов
                 for city in cities:
                     if header == cities[city]["Аббревиатура"]:
@@ -466,460 +497,465 @@ class AvitoFilesHandler:
 
        
     
-    def copy_ostatki_to_price(self):
-        # Копируем шаблон в новую директорию
-        price_template = self.settings["Настройки"]["Шаблон_для_Прайса"]
-        ostatki_path = self.settings["Настройки"]["Остатки"]
-        price_path = self.settings["Настройки"]["Прайс_для_работы"]
+    # def copy_ostatki_to_price(self):
+    #     # Копируем шаблон в новую директорию
+    #     price_template = self.settings["Настройки"]["Шаблон_для_Прайса"]
+    #     ostatki_path = self.settings["Настройки"]["Остатки"]
+    #     price_path = self.settings["Настройки"]["Прайс_для_работы"]
 
-        shutil.copy(price_template, price_path)
-        print(f"Данные из {price_template} успешно скопированы в {
-              price_path}.")
+    #     shutil.copy(price_template, price_path)
+    #     print(f"Данные из {price_template} успешно скопированы в {
+    #           price_path}.")
 
-        # Загрузка книги с остатками
-        ostatki_workbook = load_workbook(ostatki_path)
-        ostatki_sheet = ostatki_workbook.active  # Выбираем активный лист
+    #     # Загрузка книги с остатками
+    #     ostatki_workbook = load_workbook(ostatki_path)
+    #     ostatki_sheet = ostatki_workbook.active  # Выбираем активный лист
 
-        # Загрузка книги прайса
-        price_workbook = load_workbook(
-            filename=price_path, read_only=False, keep_vba=True)
-        price_sheet = price_workbook.active  # Выбираем активный лист
+    #     # Загрузка книги прайса
+    #     price_workbook = load_workbook(
+    #         filename=price_path, read_only=False, keep_vba=True)
+    #     price_sheet = price_workbook.active  # Выбираем активный лист
 
-        # Получение первой строки
-        first_row = next(ostatki_sheet.iter_rows(values_only=True))
+    #     # Получение первой строки
+    #     first_row = next(ostatki_sheet.iter_rows(values_only=True))
 
-        # Вставка значений в первую строку price_sheet
-        for col_index, value in enumerate(first_row):
-            price_sheet.cell(row=1, column=col_index + 1, value=value)
+    #     # Вставка значений в первую строку price_sheet
+    #     for col_index, value in enumerate(first_row):
+    #         price_sheet.cell(row=1, column=col_index + 1, value=value)
 
-        # # Итерация по строкам
-        for index, row in enumerate(ostatki_sheet.iter_rows(values_only=True)):
-            if index > 1:  # Пропустить вторую строку (индекс 1)
-                # Определяем строку для вставки
-                target_row = index - 1  # Вставляем с первой строки, смещая на одну вверх
-                for col_index, value in enumerate(row):
-                    # Вставляем значение в соответствующую ячейку
-                    price_sheet.cell(row=target_row + 1,
-                                     column=col_index + 1, value=value)
+    #     # # Итерация по строкам
+    #     for index, row in enumerate(ostatki_sheet.iter_rows(values_only=True)):
+    #         if index > 1:  # Пропустить вторую строку (индекс 1)
+    #             # Определяем строку для вставки
+    #             target_row = index - 1  # Вставляем с первой строки, смещая на одну вверх
+    #             for col_index, value in enumerate(row):
+    #                 # Вставляем значение в соответствующую ячейку
+    #                 price_sheet.cell(row=target_row + 1,
+    #                                  column=col_index + 1, value=value)
 
-        # Сохранение изменений в price_path
-        price_workbook.save(price_path)
+    #     # Сохранение изменений в price_path
+    #     price_workbook.save(price_path)
 
-        print(f"Данные из {ostatki_path} успешно скопированы в {price_path}.")
+    #     print(f"Данные из {ostatki_path} успешно скопированы в {price_path}.")
 
-    def price_format(self):
-        price_path = self.settings["Настройки"]["Прайс_для_работы"]
+    # def price_format(self):
+    #     price_path = self.settings["Настройки"]["Прайс_для_работы"]
 
-        # Создаем новую книгу, если прайс еще не существует
-        try:
-            workbook = load_workbook(
-                filename=price_path, read_only=False, keep_vba=True)
-        except FileNotFoundError:
-            workbook = Workbook()
+    #     # Создаем новую книгу, если прайс еще не существует
+    #     try:
+    #         workbook = load_workbook(
+    #             filename=price_path, read_only=False, keep_vba=True)
+    #     except FileNotFoundError:
+    #         workbook = Workbook()
 
-        sheet = workbook.active
-        sheet.title = "Прайс"
+    #     sheet = workbook.active
+    #     sheet.title = "Прайс"
 
-        # # Сначала создаем список объединенных диапазонов
-        # merged_ranges_to_unmerge = []
-        # for merged_range in sheet.merged_cells.ranges:
-        #     if merged_range.bounds[1] <= 2 <= merged_range.bounds[3]:  # Проверяем, включает ли объединение 2-ю строку
-        #         merged_ranges_to_unmerge.append(merged_range)
-        #
-        # # Теперь разъединяем ячейки
-        # for merged_range in merged_ranges_to_unmerge:
-        #     sheet.unmerge_cells(str(merged_range))  # Разъединяем ячейки
-        #
-        # # Теперь можем безопасно удалить 2-ю строку
-        # sheet.delete_rows(2)
+    #     # # Сначала создаем список объединенных диапазонов
+    #     # merged_ranges_to_unmerge = []
+    #     # for merged_range in sheet.merged_cells.ranges:
+    #     #     if merged_range.bounds[1] <= 2 <= merged_range.bounds[3]:  # Проверяем, включает ли объединение 2-ю строку
+    #     #         merged_ranges_to_unmerge.append(merged_range)
+    #     #
+    #     # # Теперь разъединяем ячейки
+    #     # for merged_range in merged_ranges_to_unmerge:
+    #     #     sheet.unmerge_cells(str(merged_range))  # Разъединяем ячейки
+    #     #
+    #     # # Теперь можем безопасно удалить 2-ю строку
+    #     # sheet.delete_rows(2)
 
-        # Меняем местами столбцы 7 и 8 и форматируем числа
-        for row in range(1, sheet.max_row + 1):
-            col_value = sheet.cell(row=row, column=7).value
-            col_number_format = sheet.cell(row=row, column=7).number_format
-            # Меняем местами значения
-            sheet.cell(row=row, column=7).value = sheet.cell(
-                row=row, column=8).value
-            sheet.cell(row=row, column=8).value = col_value
-            # Устанавливаем числовой формат с разделителем и без нулей после десятичной точки
-            sheet.cell(row=row, column=7).number_format = sheet.cell(
-                row=row, column=8).number_format
-            sheet.cell(row=row, column=8).number_format = col_number_format
-            # sheet.cell(row=row, column=7).number_format = '#,##0.##'
-            # sheet.cell(row=row, column=8).number_format = '#,##0.##'
-        # Переименовываем столбцы 7 и 8
-        sheet.cell(row=1, column=7).value = "Цена"
-        sheet.cell(row=1, column=8).value = "Расп"
+    #     # Меняем местами столбцы 7 и 8 и форматируем числа
+    #     for row in range(1, sheet.max_row + 1):
+    #         col_value = sheet.cell(row=row, column=7).value
+    #         col_number_format = sheet.cell(row=row, column=7).number_format
+    #         # Меняем местами значения
+    #         sheet.cell(row=row, column=7).value = sheet.cell(
+    #             row=row, column=8).value
+    #         sheet.cell(row=row, column=8).value = col_value
+    #         # Устанавливаем числовой формат с разделителем и без нулей после десятичной точки
+    #         sheet.cell(row=row, column=7).number_format = sheet.cell(
+    #             row=row, column=8).number_format
+    #         sheet.cell(row=row, column=8).number_format = col_number_format
+    #         # sheet.cell(row=row, column=7).number_format = '#,##0.##'
+    #         # sheet.cell(row=row, column=8).number_format = '#,##0.##'
+    #     # Переименовываем столбцы 7 и 8
+    #     sheet.cell(row=1, column=7).value = "Цена"
+    #     sheet.cell(row=1, column=8).value = "Расп"
 
-        # Получаем настройки аббревиатур городов
-        abbreviations = self.settings["Аббревиатуры городов"]
+    #     # Получаем настройки аббревиатур городов
+    #     abbreviations = self.settings["Аббревиатуры городов"]
 
-        # Проходим по всем ячейкам в первой строке
-        for col in range(1, sheet.max_column + 1):
-            cell_value = sheet.cell(row=1, column=col).value
-            # Проверяем, есть ли значение в настройках
-            if cell_value in abbreviations:
-                # Заменяем значение на аббревиатуру
-                sheet.cell(
-                    row=1, column=col).value = abbreviations[cell_value]["Аббревиатура"]
-                sheet.column_dimensions[sheet.cell(
-                    row=1, column=col).column_letter].width = 7  # Уменьшаем размер
-                sheet.cell(row=row, column=col).alignment = Alignment(horizontal='center')
+    #     # Проходим по всем ячейкам в первой строке
+    #     for col in range(1, sheet.max_column + 1):
+    #         cell_value = sheet.cell(row=1, column=col).value
+    #         # Проверяем, есть ли значение в настройках
+    #         if cell_value in abbreviations:
+    #             # Заменяем значение на аббревиатуру
+    #             sheet.cell(
+    #                 row=1, column=col).value = abbreviations[cell_value]["Аббревиатура"]
+    #             sheet.column_dimensions[sheet.cell(
+    #                 row=1, column=col).column_letter].width = 7  # Уменьшаем размер
+    #             sheet.cell(row=row, column=col).alignment = Alignment(horizontal='center')
 
-        # Сортируем города по их "Коду"
-        sorted_cities = sorted(abbreviations.items(),
-                               key=lambda x: int(x[1]["Сортировка"]))
+    #     # Сортируем города по их "Коду"
+    #     sorted_cities = sorted(abbreviations.items(),
+    #                            key=lambda x: int(x[1]["Сортировка"]))
 
-        # Определяем, на каком столбце будем добавлять новые
-        start_col = sheet.max_column + 1
-        cols_to_delete = []
-        # Добавляем столбцы для каждого города
-        for index, (city, data) in enumerate(sorted_cities):
-            column_letter = start_col + index
-            cell = sheet.cell(row=1, column=column_letter,
-                              value="Аббревиатура")
-            cell.value = data["Аббревиатура"]
-            new_color = data["Цвет"]
+    #     # Определяем, на каком столбце будем добавлять новые
+    #     start_col = sheet.max_column + 1
+    #     cols_to_delete = []
+    #     # Добавляем столбцы для каждого города
+    #     for index, (city, data) in enumerate(sorted_cities):
+    #         column_letter = start_col + index
+    #         cell = sheet.cell(row=1, column=column_letter,
+    #                           value="Аббревиатура")
+    #         cell.value = data["Аббревиатура"]
+    #         new_color = data["Цвет"]
 
-            # Проходим по первой строке до start_col и ищем совпадения
-            for col in range(1, start_col):
-                if sheet.cell(row=1, column=col).value == data["Аббревиатура"]:
-                    cols_to_delete.append(col)
-                    # Копируем значения из найденного столбца
-                    for row in range(2, sheet.max_row + 1):
-                        sheet.cell(row=row, column=column_letter).value = sheet.cell(
-                            row=row, column=col).value
-                        sheet.cell(row=row, column=column_letter).fill = PatternFill(start_color=new_color,
-                                                                                     end_color=new_color,
-                                                                                     fill_type='solid')
-                        sheet.cell(row=row, column=column_letter).alignment = Alignment(horizontal='center')
-        # Опять проходим по первой строке до start_col и удаляем старые столбцы городов
-        cols_to_delete.sort(reverse=True)
-        # print(cols_to_delete)
-        for col in cols_to_delete:
-            sheet.delete_cols(col, 1)  # Удаляем столбец
+    #         # Проходим по первой строке до start_col и ищем совпадения
+    #         for col in range(1, start_col):
+    #             if sheet.cell(row=1, column=col).value == data["Аббревиатура"]:
+    #                 cols_to_delete.append(col)
+    #                 # Копируем значения из найденного столбца
+    #                 for row in range(2, sheet.max_row + 1):
+    #                     sheet.cell(row=row, column=column_letter).value = sheet.cell(
+    #                         row=row, column=col).value
+    #                     sheet.cell(row=row, column=column_letter).fill = PatternFill(start_color=new_color,
+    #                                                                                  end_color=new_color,
+    #                                                                                  fill_type='solid')
+    #                     sheet.cell(row=row, column=column_letter).alignment = Alignment(horizontal='center')
+    #     # Опять проходим по первой строке до start_col и удаляем старые столбцы городов
+    #     cols_to_delete.sort(reverse=True)
+    #     # print(cols_to_delete)
+    #     for col in cols_to_delete:
+    #         sheet.delete_cols(col, 1)  # Удаляем столбец
 
-        # Получаем номер последнего столбца
-        last_col = sheet.max_column
+    #     # Получаем номер последнего столбца
+    #     last_col = sheet.max_column
 
-        # Копируем столбцы 3-6 в конец таблицы
-        for col in range(3, 7):  # Столбцы 3, 4, 5, 6
-            for row in range(1, sheet.max_row + 1):
-                sheet.cell(row=row, column=last_col + (col - 3) +
-                           1).value = sheet.cell(row=row, column=col).value
+    #     # Копируем столбцы 3-6 в конец таблицы
+    #     for col in range(3, 7):  # Столбцы 3, 4, 5, 6
+    #         for row in range(1, sheet.max_row + 1):
+    #             sheet.cell(row=row, column=last_col + (col - 3) +
+    #                        1).value = sheet.cell(row=row, column=col).value
 
-        # Удаляем исходные столбцы 3-6
-        sheet.delete_cols(3, 4)  # Удаляем 4 столбца, начиная с 3-го
+    #     # Удаляем исходные столбцы 3-6
+    #     sheet.delete_cols(3, 4)  # Удаляем 4 столбца, начиная с 3-го
 
-        # Добавляем столбцы: 1 - "Вес", 2 и 3 - пустые, 4 - "ID_01"
-        sheet.insert_cols(1, 5)  # Вставляем 4 столбца (1, 2, 3, 4)
-        sheet.cell(row=1, column=1, value="Вес")
-        sheet.cell(row=1, column=2, value="")
-        sheet.cell(row=1, column=3, value="")
-        sheet.cell(row=1, column=4, value="")
-        sheet.cell(row=1, column=5, value="ID_01")
+    #     # Добавляем столбцы: 1 - "Вес", 2 и 3 - пустые, 4 - "ID_01"
+    #     sheet.insert_cols(1, 5)  # Вставляем 4 столбца (1, 2, 3, 4)
+    #     sheet.cell(row=1, column=1, value="Вес")
+    #     sheet.cell(row=1, column=2, value="")
+    #     sheet.cell(row=1, column=3, value="")
+    #     sheet.cell(row=1, column=4, value="")
+    #     sheet.cell(row=1, column=5, value="ID_01")
 
-        # Устанавливаем ширину столбцов
-        # sheet.column_dimensions[sheet.cell(
-        #     row=1, column=1).column_letter].width = 4.17  # 1-й столбец (Вес)
-        # sheet.column_dimensions[sheet.cell(
-        #     row=1, column=2).column_letter].width = 0.82  # 2-й столбец
-        # sheet.column_dimensions[sheet.cell(
-        #     row=1, column=3).column_letter].width = 0.82  # 3-й столбец
-        # sheet.column_dimensions[sheet.cell(
-        #     row=1, column=4).column_letter].width = pixels_to_width(9)  # 4-й столбец
-        sheet.column_dimensions[sheet.cell(
-            row=1, column=5).column_letter].hidden = True  # 5-й столбец (ID_01)
+    #     # Устанавливаем ширину столбцов
+    #     # sheet.column_dimensions[sheet.cell(
+    #     #     row=1, column=1).column_letter].width = 4.17  # 1-й столбец (Вес)
+    #     # sheet.column_dimensions[sheet.cell(
+    #     #     row=1, column=2).column_letter].width = 0.82  # 2-й столбец
+    #     # sheet.column_dimensions[sheet.cell(
+    #     #     row=1, column=3).column_letter].width = 0.82  # 3-й столбец
+    #     # sheet.column_dimensions[sheet.cell(
+    #     #     row=1, column=4).column_letter].width = pixels_to_width(9)  # 4-й столбец
+    #     sheet.column_dimensions[sheet.cell(
+    #         row=1, column=5).column_letter].hidden = True  # 5-й столбец (ID_01)
 
-        # Добавляем столбцы с параметрами из раздела "Авито"
-        avito_settings = self.settings["Авито"]  # Обращаемся к разделу "Авито"
-        # Начинаем с 6-го столбца (5 - потому что будем сразу увеличивать на 1)
-        col_n = 5
+    #     # Добавляем столбцы с параметрами из раздела "Авито"
+    #     avito_settings = self.settings["Авито"]  # Обращаемся к разделу "Авито"
+    #     # Начинаем с 6-го столбца (5 - потому что будем сразу увеличивать на 1)
+    #     col_n = 5
 
-        for key, value in avito_settings.items():
-            col_n += 1  # Увеличиваем смещение для следующего столбца
-            column_name = f"Avitoid_{value['Код']}"
-            # Вставляем новый столбец перед добавлением заголовка
-            sheet.insert_cols(col_n)
-            # Заполняем заголовок
-            sheet.cell(row=1, column=col_n, value=column_name)
+    #     for key, value in avito_settings.items():
+    #         col_n += 1  # Увеличиваем смещение для следующего столбца
+    #         column_name = f"Avitoid_{value['Код']}"
+    #         # Вставляем новый столбец перед добавлением заголовка
+    #         sheet.insert_cols(col_n)
+    #         # Заполняем заголовок
+    #         sheet.cell(row=1, column=col_n, value=column_name)
 
-        # Устанавливаем ширину для дополнительных столбцов
-        for i in range(5, col_n + 1):  # 5-й столбец и дальше
-            # Ширина по вашему выбору
-            # sheet.column_dimensions[sheet.cell(
-            #     row=1, column=i).column_letter].width = 11
-            sheet.column_dimensions[sheet.cell(
-                row=1, column=i).column_letter].hidden = True
+    #     # Устанавливаем ширину для дополнительных столбцов
+    #     for i in range(5, col_n + 1):  # 5-й столбец и дальше
+    #         # Ширина по вашему выбору
+    #         # sheet.column_dimensions[sheet.cell(
+    #         #     row=1, column=i).column_letter].width = 11
+    #         sheet.column_dimensions[sheet.cell(
+    #             row=1, column=i).column_letter].hidden = True
 
-        col_n += 1
-        sheet.column_dimensions[sheet.cell(
-            row=1, column=col_n).column_letter].width = pixels_to_width(145)  # Размер для Артикул
-        col_n += 1
-        sheet.column_dimensions[sheet.cell(
-            row=1, column=col_n).column_letter].width = pixels_to_width(790)  # Размер для Товар
-        col_n += 1
+    #     col_n += 1
+    #     sheet.column_dimensions[sheet.cell(
+    #         row=1, column=col_n).column_letter].width = pixels_to_width(145)  # Размер для Артикул
+    #     col_n += 1
+    #     sheet.column_dimensions[sheet.cell(
+    #         row=1, column=col_n).column_letter].width = pixels_to_width(790)  # Размер для Товар
+    #     col_n += 1
 
-        # Создаем словарь кодов городов, где ключ — Код, значение — Аббревиатура
-        city_params_dict = {}
-        city_code_dict = {}
-        city_api_dict = {}
-        for city, details in abbreviations.items():
-            code = details["Код"]
-            abbreviation = details["Аббревиатура"]
-            api_key = details["Обновление по API"]
-            city_code_dict[code] = abbreviation
-            city_api_dict[abbreviation] = api_key
-        city_params_dict['codes'] = city_code_dict
-        city_params_dict['api_keys'] = city_api_dict
+    #     # Создаем словарь кодов городов, где ключ — Код, значение — Аббревиатура
+    #     city_params_dict = {}
+    #     city_code_dict = {}
+    #     city_api_dict = {}
+    #     for city, details in abbreviations.items():
+    #         code = details["Код"]
+    #         abbreviation = details["Аббревиатура"]
+    #         api_key = details["Обновление по API"]
+    #         city_code_dict[code] = abbreviation
+    #         city_api_dict[abbreviation] = api_key
+    #     city_params_dict['codes'] = city_code_dict
+    #     city_params_dict['api_keys'] = city_api_dict
 
-        # Преобразование словаря в строку JSON
-        json_str = json.dumps(city_params_dict)
+    #     # Преобразование словаря в строку JSON
+    #     json_str = json.dumps(city_params_dict)
 
-        sheet.insert_cols(col_n)  # Добавляем пустой столбец
-        # sheet.cell(row=1, column=col_n, value="")
-        # В заголовок записываем справочник кодов городов
-        sheet.cell(row=1, column=col_n).value = json_str
-        sheet.column_dimensions[sheet.cell(
-            row=1, column=col_n).column_letter].width = 2
+    #     sheet.insert_cols(col_n)  # Добавляем пустой столбец
+    #     # sheet.cell(row=1, column=col_n, value="")
+    #     # В заголовок записываем справочник кодов городов
+    #     sheet.cell(row=1, column=col_n).value = json_str
+    #     sheet.column_dimensions[sheet.cell(
+    #         row=1, column=col_n).column_letter].width = 2
 
-        col_n += 1
-        # Вставляем новый столбец перед добавлением заголовка
-        sheet.insert_cols(col_n)
-        sheet.cell(row=1, column=col_n, value="Прайс")  # Заполняем заголовок
-        # Заливаем столбец Прайс цветом (242,242,242)
-        for row in range(1, sheet.max_row + 1):
-            sheet.cell(row=row, column=col_n).fill = PatternFill(start_color='F2F2F2', end_color='F2F2F2',
-                                                                 fill_type='solid')
-        sheet.column_dimensions[sheet.cell(
-            row=1, column=col_n).column_letter].width = 10  # Размер для Прайс
-        col_n += 1
-        sheet.column_dimensions[sheet.cell(
-            row=1, column=col_n).column_letter].width = 10  # Размер для Цена
+    #     col_n += 1
+    #     # Вставляем новый столбец перед добавлением заголовка
+    #     sheet.insert_cols(col_n)
+    #     sheet.cell(row=1, column=col_n, value="Прайс")  # Заполняем заголовок
+    #     # Заливаем столбец Прайс цветом (242,242,242)
+    #     for row in range(1, sheet.max_row + 1):
+    #         sheet.cell(row=row, column=col_n).fill = PatternFill(start_color='F2F2F2', end_color='F2F2F2',
+    #                                                              fill_type='solid')
+    #     sheet.column_dimensions[sheet.cell(
+    #         row=1, column=col_n).column_letter].width = 10  # Размер для Прайс
+    #     col_n += 1
+    #     sheet.column_dimensions[sheet.cell(
+    #         row=1, column=col_n).column_letter].width = 10  # Размер для Цена
         
-        col_n += 1
-        # Вставляем новый столбец -10% перед добавлением заголовка
-        sheet.insert_cols(col_n)
-        sheet.cell(row=1, column=col_n, value="-10%")  # Заполняем заголовок
-        for row in range(2, sheet.max_row + 1):
-            price_str = sheet.cell(row=row, column=col_n-1).value
-            price_val = 0
-            try:
-                if price_str is not None:  # Проверяем, что ячейка не пуста
-                    price_val = float(price_str)
-            except ValueError:
-                pass
-            price_10_val = round(price_val * 0.9, 2)
-            sheet.cell(row=row, column=col_n).value = price_10_val
-        sheet.column_dimensions[get_column_letter(col_n)].hidden = True  # Скрываем столбец -10%
+    #     col_n += 1
+    #     # Вставляем новый столбец -10% перед добавлением заголовка
+    #     sheet.insert_cols(col_n)
+    #     sheet.cell(row=1, column=col_n, value="-10%")  # Заполняем заголовок
+    #     for row in range(2, sheet.max_row + 1):
+    #         price_str = sheet.cell(row=row, column=col_n-1).value
+    #         price_val = 0
+    #         try:
+    #             if price_str is not None:  # Проверяем, что ячейка не пуста
+    #                 price_val = float(price_str)
+    #         except ValueError:
+    #             pass
+    #         price_10_val = round(price_val * 0.9, 2)
+    #         sheet.cell(row=row, column=col_n).value = price_10_val
+    #     sheet.column_dimensions[get_column_letter(col_n)].hidden = True  # Скрываем столбец -10%
 
-        col_n += 1
-        sheet.column_dimensions[sheet.cell(
-            row=1, column=col_n).column_letter].width = 10  # Размер для Расп
-        # col_n += 1
-        # sheet.insert_cols(col_n)  # Вставляем новый столбец перед добавлением заголовка
+    #     col_n += 1
+    #     sheet.column_dimensions[sheet.cell(
+    #         row=1, column=col_n).column_letter].width = 10  # Размер для Расп
+    #     # col_n += 1
+    #     # sheet.insert_cols(col_n)  # Вставляем новый столбец перед добавлением заголовка
 
-        # # Создаем словарь кодов городов, где ключ — Код, значение — Аббревиатура
-        # city_params_dict = {}
-        # city_code_dict = {}
-        # city_api_dict = {}
-        # for city, details in abbreviations.items():
-        #     code = details["Код"]
-        #     abbreviation = details["Аббревиатура"]
-        #     api_key = details["Обновление по API"]
-        #     city_code_dict[code] = abbreviation
-        #     city_api_dict[abbreviation] = api_key
-        # city_params_dict['codes'] = city_code_dict
-        # city_params_dict['api_keys'] = city_api_dict
+    #     # # Создаем словарь кодов городов, где ключ — Код, значение — Аббревиатура
+    #     # city_params_dict = {}
+    #     # city_code_dict = {}
+    #     # city_api_dict = {}
+    #     # for city, details in abbreviations.items():
+    #     #     code = details["Код"]
+    #     #     abbreviation = details["Аббревиатура"]
+    #     #     api_key = details["Обновление по API"]
+    #     #     city_code_dict[code] = abbreviation
+    #     #     city_api_dict[abbreviation] = api_key
+    #     # city_params_dict['codes'] = city_code_dict
+    #     # city_params_dict['api_keys'] = city_api_dict
 
-        # # Преобразование словаря в строку JSON
-        # json_str = json.dumps(city_params_dict)
+    #     # # Преобразование словаря в строку JSON
+    #     # json_str = json.dumps(city_params_dict)
 
-        # sheet.cell(row=1, column=col_n).value = json_str  # В заголовок записываем справочник кодов городов
-        # sheet.column_dimensions[sheet.cell(row=1, column=col_n).column_letter].width = 2
+    #     # sheet.cell(row=1, column=col_n).value = json_str  # В заголовок записываем справочник кодов городов
+    #     # sheet.column_dimensions[sheet.cell(row=1, column=col_n).column_letter].width = 2
 
-        # Устанавливаем размер шрифта в первой строке
-        for col in range(1, sheet.max_column + 1):
-            sheet.cell(row=1, column=col).font = Font(size=10)
+    #     # Устанавливаем размер шрифта в первой строке
+    #     for col in range(1, sheet.max_column + 1):
+    #         sheet.cell(row=1, column=col).font = Font(size=10)
 
-        # Заливаем первую строку цветом (79,129,189) и устанавливаем белый цвет шрифта
-        header_fill = PatternFill(
-            start_color='4F7DBE', end_color='4F7DBE', fill_type='solid')
-        for col in range(1, sheet.max_column + 1):
-            sheet.cell(row=1, column=col).fill = header_fill
-            sheet.cell(row=1, column=col).font = Font(
-                color='FFFFFF')  # Белый цвет
+    #     # Заливаем первую строку цветом (79,129,189) и устанавливаем белый цвет шрифта
+    #     header_fill = PatternFill(
+    #         start_color='4F7DBE', end_color='4F7DBE', fill_type='solid')
+    #     for col in range(1, sheet.max_column + 1):
+    #         sheet.cell(row=1, column=col).fill = header_fill
+    #         sheet.cell(row=1, column=col).font = Font(
+    #             color='FFFFFF')  # Белый цвет
 
-        # Устанавливаем сетку с цветом (79,129,189)
-        border_color = Side(style='thin', color='4F7DBE')
-        for row in sheet.iter_rows(min_row=1, max_row=sheet.max_row, min_col=1, max_col=sheet.max_column):
-            for cell in row:
-                cell.border = Border(
-                    left=border_color, right=border_color, top=border_color, bottom=border_color)
+    #     # Устанавливаем сетку с цветом (79,129,189)
+    #     border_color = Side(style='thin', color='4F7DBE')
+    #     for row in sheet.iter_rows(min_row=1, max_row=sheet.max_row, min_col=1, max_col=sheet.max_column):
+    #         for cell in row:
+    #             cell.border = Border(
+    #                 left=border_color, right=border_color, top=border_color, bottom=border_color)
 
-        # Замораживаем первую строку
-        sheet.freeze_panes = sheet["A2"]
+    #     # Замораживаем первую строку
+    #     sheet.freeze_panes = sheet["A2"]
 
-        # Сохраняем изменения
-        workbook.save(price_path)
-        print(f"Таблица прайса успешно сформирована и сохранена в '{
-              price_path}'.")
+    #     # Сохраняем изменения
+    #     workbook.save(price_path)
+    #     print(f"Таблица прайса успешно сформирована и сохранена в '{price_path}'.")
 
-    def update_price_from_goods(self):
-        price_path = self.settings["Настройки"]["Прайс_для_работы"]
-        goods_path = self.settings["Настройки"]["Таблица_с_товарами"]
+    # def update_price_from_goods(self):
+    #     price_path = self.settings["Настройки"]["Прайс_для_работы"]
+    #     goods_path = self.settings["Настройки"]["Таблица_с_товарами"]
 
-        link_0 = self.settings["Ссылки"]["Ссылка_прайса"]
-        # link_1 = self.settings["Ссылки"]["Ссылка_прайса_1"]
-        # link_2 = self.settings["Ссылки"]["Ссылка_прайса_2"]
+    #     link_0 = self.settings["Ссылки"]["Ссылка_прайса"]
+    #     # link_1 = self.settings["Ссылки"]["Ссылка_прайса_1"]
+    #     # link_2 = self.settings["Ссылки"]["Ссылка_прайса_2"]
 
-        # Загружаем таблицы
-        price_workbook = load_workbook(
-            filename=price_path, read_only=False, keep_vba=True)
-        goods_workbook = load_workbook(goods_path)
+    #     # Загружаем таблицы
+    #     price_workbook = load_workbook(
+    #         filename=price_path, read_only=False, keep_vba=True)
+    #     goods_workbook = load_workbook(goods_path)
 
-        price_sheet = price_workbook.active
-        goods_sheet = goods_workbook.active
+    #     price_sheet = price_workbook.active
+    #     goods_sheet = goods_workbook.active
 
-        # Находим индекс столбца "Артикул" в таблице "Прайс"
-        article_col_price = None
-        for col in range(1, price_sheet.max_column + 1):
-            if price_sheet.cell(row=1, column=col).value == "Артикул":
-                article_col_price = col
-                break
+    #     # Находим индекс столбца "Артикул" в таблице "Прайс"
+    #     article_col_price = None
+    #     for col in range(1, price_sheet.max_column + 1):
+    #         if price_sheet.cell(row=1, column=col).value == "Артикул":
+    #             article_col_price = col
+    #             break
 
-        # Находим индекс столбца "Бренд" в таблице "Прайс"
-        brand_col_price = None
-        for col in range(1, price_sheet.max_column + 1):
-            if price_sheet.cell(row=1, column=col).value == "Бренд":
-                brand_col_price = col
-                break
+    #     # Находим индекс столбца "Бренд" в таблице "Прайс"
+    #     brand_col_price = None
+    #     for col in range(1, price_sheet.max_column + 1):
+    #         if price_sheet.cell(row=1, column=col).value == "Бренд":
+    #             brand_col_price = col
+    #             break
 
-         # Находим индекс столбца "Товарная группа" в таблице "Прайс"
-        product_group_col_price = None
-        for col in range(1, price_sheet.max_column + 1):
-            if price_sheet.cell(row=1, column=col).value == "Товарная группа":
-                product_group_col_price = col
-                break
+    #      # Находим индексы столбцов "Товарная группа" "К2" в таблице "Прайс"
+    #     product_group_col_price = None
+    #     comment_col_price = None
+    #     for col in range(1, price_sheet.max_column + 1):
+    #         if price_sheet.cell(row=1, column=col).value == "Товарная группа":
+    #             product_group_col_price = col
+    #         if price_sheet.cell(row=1, column=col).value == "К2":
+    #             comment_col_price = col
+                
 
-        # Находим индекс столбца "Артикул" в таблице "Товар"
-        article_col_goods = None
-        for col in range(1, goods_sheet.max_column + 1):
-            if goods_sheet.cell(row=1, column=col).value == "Артикул":
-                article_col_goods = col
-                break
+    #     # Находим индекс столбца "Артикул" в таблице "Товар"
+    #     article_col_goods = None
+    #     for col in range(1, goods_sheet.max_column + 1):
+    #         if goods_sheet.cell(row=1, column=col).value == "Артикул":
+    #             article_col_goods = col
+    #             break
 
-        if article_col_price is None or article_col_goods is None:
-            print("Не удалось найти столбец 'Артикул' в одной из таблиц.")
-            return
+    #     if article_col_price is None or article_col_goods is None:
+    #         print("Не удалось найти столбец 'Артикул' в одной из таблиц.")
+    #         return
 
-        avito_settings = self.settings["Авито"]  # Обращаемся к разделу "Авито"
-        avito_count = len(avito_settings)
+    #     avito_settings = self.settings["Авито"]  # Обращаемся к разделу "Авито"
+    #     avito_count = len(avito_settings)
 
-        # Создаем словарь для значений из таблицы "Товар"
-        goods_data = self.excel_to_dict(
-            excel_path=self.settings["Настройки"]["Таблица_с_товарами"], key_col_header="Артикул", key_upper=True)
-        for key in goods_data:
-            goods_data[key]["is_correct"] = False
-            if goods_data[key]["Артикул"] is not None:
-                goods_data[key]["Артикул"] = goods_data[key]["Артикул"].upper()
-                for code in range(1, avito_count + 1):
-                    if goods_data[key][f"{code:02}: AvitoId"] != "":
-                        goods_data[key]["is_correct"] = True
+    #     # Создаем словарь для значений из таблицы "Товар"
+    #     goods_data = self.excel_to_dict(
+    #         excel_path=self.settings["Настройки"]["Таблица_с_товарами"], key_col_header="Артикул", key_upper=True)
+    #     for key in goods_data:
+    #         goods_data[key]["is_correct"] = False
+    #         if goods_data[key]["Артикул"] is not None:
+    #             goods_data[key]["Артикул"] = goods_data[key]["Артикул"].upper()
+    #             for code in range(1, avito_count + 1):
+    #                 if goods_data[key][f"{code:02}: AvitoId"] != "":
+    #                     goods_data[key]["is_correct"] = True
 
-        # Скачиваем XML-файл
-        print('Начало скачивания файла XML')
-        xml_path = self.settings["Настройки"]["XML_файл"]
-        download_xml(
-            'http://portal.autofamily.ru/export/autofamily_catalog.xml', xml_path)
-        print('Скачивание файла XML завершено')
+    #     # Скачиваем XML-файл
+    #     print('Начало скачивания файла XML')
+    #     xml_path = self.settings["Настройки"]["XML_файл"]
+    #     download_xml(
+    #         'http://portal.autofamily.ru/export/autofamily_catalog.xml', xml_path)
+    #     print('Скачивание файла XML завершено')
 
-        # Парсим XML-файл
-        article_weight = parse_xml(xml_path)
+    #     # Парсим XML-файл
+    #     article_weight = parse_xml(xml_path)
 
-        # Вставляем веса и значения из таблицы "Товар" в таблицу "Прайс"
+    #     # Вставляем веса и значения из таблицы "Товар" в таблицу "Прайс"
 
-        start_col = 5  # Начинаем с 5-го столбца (номер 5)
-        for row in range(2, price_sheet.max_row + 1):
-            article_value = str(price_sheet.cell(
-                row=row, column=article_col_price).value)
-            article_value = article_value.upper()
-            # Вставляем веса
-            if article_value in article_weight:
-                weight = article_weight[article_value]
-                # Записываем вес в 1-й столбец
-                price_sheet.cell(row=row, column=1, value=weight)
-            # Вставляем значения из таблицы "Товар"
-            if (article_value in goods_data) and goods_data[article_value]["is_correct"]:
-                col_n = start_col
-                price_sheet.cell(
-                    row=row, column=col_n).value = goods_data[article_value]["01: Id"]
-                for code in range(1, avito_count + 1):
-                    col_n += 1
-                    price_sheet.cell(row=row, column=col_n).value = goods_data[article_value][f"{
-                        code:02}: AvitoId"]
-                col_n += 4
-                price_sheet.cell(
-                    row=row, column=col_n).value = goods_data[article_value]["01: Price"]
-                if goods_data[article_value]["AvitoStatus"] == "Активно":
-                    price_sheet.cell(row=row, column=col_n).fill = PatternFill(start_color='EBF1DE', end_color='EBF1DE',
-                                                                               fill_type='solid')
-                else:
-                    price_sheet.cell(row=row, column=col_n).fill = PatternFill(start_color='F2DCD7', end_color='F2DCD7',
-                                                                               fill_type='solid')
-                # Вставляем ссылки
-                # price_sheet.cell(row=row, column=2).value = link_1.replace("{ID_01}",
-                #                                                            goods_data[article_value]["ID_01"])
-                # price_sheet.cell(row=row, column=3).value = link_2.replace("{ID_01}",
-                #                                                            goods_data[article_value]["ID_01"])
+    #     start_col = 5  # Начинаем с 5-го столбца (номер 5)
+    #     for row in range(2, price_sheet.max_row + 1):
+    #         article_value = str(price_sheet.cell(
+    #             row=row, column=article_col_price).value)
+    #         article_value = article_value.upper()
+    #         # Вставляем веса
+    #         if article_value in article_weight:
+    #             weight = article_weight[article_value]
+    #             # Записываем вес в 1-й столбец
+    #             price_sheet.cell(row=row, column=1, value=weight)
+    #         # Вставляем значения из таблицы "Товар"
+    #         if (article_value in goods_data) and goods_data[article_value]["is_correct"]:
+    #             col_n = start_col
+    #             price_sheet.cell(
+    #                 row=row, column=col_n).value = goods_data[article_value]["01: Id"]
+    #             for code in range(1, avito_count + 1):
+    #                 col_n += 1
+    #                 price_sheet.cell(row=row, column=col_n).value = goods_data[article_value][f"{
+    #                     code:02}: AvitoId"]
+    #             col_n += 4
+    #             price_sheet.cell(
+    #                 row=row, column=col_n).value = goods_data[article_value]["01: Price"]
+    #             if goods_data[article_value]["AvitoStatus"] == "Активно":
+    #                 price_sheet.cell(row=row, column=col_n).fill = PatternFill(start_color='EBF1DE', end_color='EBF1DE',
+    #                                                                            fill_type='solid')
+    #             else:
+    #                 price_sheet.cell(row=row, column=col_n).fill = PatternFill(start_color='F2DCD7', end_color='F2DCD7',
+    #                                                                            fill_type='solid')
+    #             # Ссылки
+    #             for code in range(1, avito_count + 1):
+    #                 price_sheet.cell(row=row, column=1+code).value = link_0.replace(
+    #                     "{ID_XX}", str(goods_data[article_value][f"{code:02}: AvitoId"]))
+    #             # Комментарий
+    #             if comment_col_price:
+    #                 price_sheet.cell(row=row, column=comment_col_price).value = goods_data[article_value]["Комментарий 2"]
+    #                 comment_color = goods_data[article_value]["fill_dict"]["Комментарий 2"]
+    #                 price_sheet.cell(row=row, column=comment_col_price).fill = PatternFill(start_color=comment_color, end_color=comment_color,
+    #                                                                            fill_type='solid')
 
-                for code in range(1, avito_count + 1):
-                    price_sheet.cell(row=row, column=1+code).value = link_0.replace(
-                        "{ID_XX}", str(goods_data[article_value][f"{code:02}: AvitoId"]))
 
-        self.apply_filters_to_price_sheet(price_sheet, article_col_price, brand_col_price, product_group_col_price)
+    #     self.apply_filters_to_price_sheet(price_sheet, article_col_price, brand_col_price, product_group_col_price)
 
-        # Сохраняем изменения в таблице "Прайс"
-        price_workbook.save(price_path)
-        print(f"Таблица 'Прайс' обновлена на основе таблицы 'Товар'.")
+    #     # Сохраняем изменения в таблице "Прайс"
+    #     price_workbook.save(price_path)
+    #     print(f"Таблица 'Прайс' обновлена на основе таблицы 'Товар'.")
 
-    def apply_filters_to_price_sheet(self, sheet, article_col, brand_col, product_group_col):
-        # Получаем фильтры из настроек
-        text_filters = self.settings["Фильтры"]["Фильтр_по_тексту"]
-        article_filters = self.settings["Фильтры"]["Фильтр_по_артикулу"]
-        group_brand_filters = self.settings["Фильтры"]["Фильтр_по_товарная_группа_и_бренд"]
+    # def apply_filters_to_price_sheet(self, sheet, article_col, brand_col, product_group_col):
+    #     # Получаем фильтры из настроек
+    #     text_filters = self.settings["Фильтры"]["Фильтр_по_тексту"]
+    #     article_filters = self.settings["Фильтры"]["Фильтр_по_артикулу"]
+    #     group_brand_filters = self.settings["Фильтры"]["Фильтр_по_товарная_группа_и_бренд"]
 
-        # Удаляем вхождения текстовых фильтров из 9 столбца
-        for row in range(2, sheet.max_row + 1):  # Начинаем с 2-й строки
-            cell_value = sheet.cell(row=row, column=article_col + 1).value
-            if cell_value:  # Проверяем, что значение не None
-                for text_filter in text_filters:
-                    cell_value = cell_value.replace(
-                        text_filter, "")  # Заменяем на пустую строку
-                # Убираем лишние пробелы
-                sheet.cell(row=row, column=article_col +
-                           1).value = cell_value.strip()
+    #     # Удаляем вхождения текстовых фильтров из 9 столбца
+    #     for row in range(2, sheet.max_row + 1):  # Начинаем с 2-й строки
+    #         cell_value = sheet.cell(row=row, column=article_col + 1).value
+    #         if cell_value:  # Проверяем, что значение не None
+    #             for text_filter in text_filters:
+    #                 cell_value = cell_value.replace(
+    #                     text_filter, "")  # Заменяем на пустую строку
+    #             # Убираем лишние пробелы
+    #             sheet.cell(row=row, column=article_col +
+    #                        1).value = cell_value.strip()
 
-        # Помечаем на удаление строки, если найдены соответствия по article_col
-        rows_to_delete = []
-        for row in range(2, sheet.max_row + 1):
-            article_value = sheet.cell(row=row, column=article_col).value
-            brand_value = sheet.cell(row=row, column=brand_col).value
-            product_group_value = sheet.cell(row=row, column=product_group_col).value
-            if (article_value in article_filters) or (brand_value in group_brand_filters) or (product_group_value in group_brand_filters):
-                rows_to_delete.append(row)
+    #     # Помечаем на удаление строки, если найдены соответствия по article_col
+    #     rows_to_delete = []
+    #     for row in range(2, sheet.max_row + 1):
+    #         article_value = sheet.cell(row=row, column=article_col).value
+    #         brand_value = sheet.cell(row=row, column=brand_col).value
+    #         product_group_value = sheet.cell(row=row, column=product_group_col).value
+    #         if (article_value in article_filters) or (brand_value in group_brand_filters) or (product_group_value in group_brand_filters):
+    #             rows_to_delete.append(row)
 
-        # Помечаем на удаление строки, если найдены соответствия по brand_col или product_group_col
-        # rows_to_delete = []
-        # for row in range(2, sheet.max_row + 1):
-        #     brand_value = sheet.cell(row=row, column=brand_col).value
-        #     product_group_value = sheet.cell(row=row, column=product_group_col).value
-        #     if (brand_value in group_brand_filters) or (product_group_value in group_brand_filters):
-        #         rows_to_delete.append(row)
+    #     # Помечаем на удаление строки, если найдены соответствия по brand_col или product_group_col
+    #     # rows_to_delete = []
+    #     # for row in range(2, sheet.max_row + 1):
+    #     #     brand_value = sheet.cell(row=row, column=brand_col).value
+    #     #     product_group_value = sheet.cell(row=row, column=product_group_col).value
+    #     #     if (brand_value in group_brand_filters) or (product_group_value in group_brand_filters):
+    #     #         rows_to_delete.append(row)
 
-        # Удаляем строки, начиная с конца, чтобы не нарушить индексацию
-        for row in reversed(rows_to_delete):
-            sheet.delete_rows(row)
+    #     # Удаляем строки, начиная с конца, чтобы не нарушить индексацию
+    #     for row in reversed(rows_to_delete):
+    #         sheet.delete_rows(row)
+
 
     def create_price_file(self, check_email=True):
         if check_email:
@@ -928,6 +964,7 @@ class AvitoFilesHandler:
         # self.copy_ostatki_to_price()
         # self.price_format()
         # self.update_price_from_goods()
+
 
     def excel_to_list(self, excel_path):
         # Открываем Excel-файл
@@ -949,7 +986,8 @@ class AvitoFilesHandler:
             result_list.append(row_dict)
         return result_list
 
-    def excel_to_dict(self, excel_path, key_col_header, key_upper=False):
+
+    def excel_to_dict(self, excel_path, key_col_header, key_upper=False, copy_fill=False):
         # Открываем Excel-файл
         workbook = load_workbook(excel_path)
         sheet = workbook.active  # Получаем активный лист
@@ -964,21 +1002,58 @@ class AvitoFilesHandler:
         result_dict = {}
 
         # Iterate over each row starting from the second row (data rows)
-        for row in sheet.iter_rows(min_row=2, values_only=True):
-            # Get the "Артикул" value for this row to use as the key
-            art_key = row[headers.index(
-                key_col_header)] if key_col_header in headers else None
+        for row in sheet.iter_rows(min_row=2):  # Убрали values_only=True
+            # Получаем значение "Артикул" для ключа
+            art_key = row[headers.index(key_col_header)].value if key_col_header in headers else None
 
             if art_key:
-                # Create a dictionary for this row, including only valid columns
-                # row_dict = {headers[i]: row[i] for i in valid_columns if headers[i] != key_col_header}
+                # Преобразуем ключ в верхний регистр, если требуется
                 if key_upper and isinstance(art_key, str):
                     art_key = art_key.upper()
-                row_dict = {headers[i]: row[i] for i in valid_columns}
-                # Add the row dictionary to the main result dictionary
+
+                # Получаем значения ячеек
+                row_dict = {headers[i]: row[i].value for i in valid_columns}
+
+                # Получаем цвета ячеек, если требуется
+                if copy_fill :
+                    fill_dict = {}
+                    for i in valid_columns:
+                        fill_color = row[i].fill.start_color
+                        if fill_color is None or fill_color.rgb == "00000000":
+                            fill_dict[headers[i]] = None  # Указываем отсутствие заливки
+                        else:
+                            fill_dict[headers[i]] = fill_color  # Сохраняем реальный цвет 
+                    
+                    # fill_dict = {
+                    #     headers[i]: row[i].fill.start_color for i in valid_columns
+                    # }
+                    row_dict['fill_dict'] = fill_dict
+
+                    # Проверяем, есть ли реальная заливка или цвет по умолчанию (отсутствие цвета)
+    
+
+                # Добавляем результат в словарь
                 result_dict[art_key] = row_dict
+        # for row in sheet.iter_rows(min_row=2, values_only=True):
+        #     # Get the "Артикул" value for this row to use as the key
+        #     art_key = row[headers.index(key_col_header)] if key_col_header in headers else None
+
+        #     if art_key:
+        #         # Create a dictionary for this row, including only valid columns
+        #         # row_dict = {headers[i]: row[i] for i in valid_columns if headers[i] != key_col_header}
+        #         if key_upper and isinstance(art_key, str):
+        #             art_key = art_key.upper()
+        #         row_dict = {headers[i]: row[i] for i in valid_columns}
+        #         if copy_fill:
+        #             pprint("============================", row)
+        #             print(type(row))
+        #             fill_dict = {headers[i]: row[i].fill for i in valid_columns}
+        #             row_dict['fill_dict'] = fill_dict
+        #         # Add the row dictionary to the main result dictionary
+        #         result_dict[art_key] = row_dict
 
         return result_dict
+
 
     def create_orders_files(self, stores=[], check_email=False):
         # Проверяем нужно ли загружать остатки по email
@@ -1365,3 +1440,4 @@ if __name__ == "__main__":
     # price_handler.create_orders_files(["02", "03"], False)
     # price_handler.create_price_weigh_file()
     # price_handler.add_vba(8)
+    # price_handler.add_discounts_to_price(price)
