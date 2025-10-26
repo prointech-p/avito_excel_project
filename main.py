@@ -17,7 +17,8 @@ def main():
     if args.command == "automation":
         price_handler = AvitoFilesHandler(settings_path)
         price_handler.create_price_file()
-        price_handler.create_all_avito_files()
+        price_handler.create_all_avito_files(only_active=True)
+        price_handler.create_all_avito_files(only_active=False)
     elif args.command == "app":
         root = tk.Tk()
         app = App(root)
