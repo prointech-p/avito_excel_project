@@ -1333,9 +1333,9 @@ class AvitoFilesHandler:
             avito_id = row_data.get(f'{code}: AvitoId')
             if avito_id in [None, '', 0]:
                 continue  # пропускаем товары без AvitoId
-
+            in_avito = str(row_data.get("В Авито", "")).strip().lower()
             # --- проверка на наличие остатков, если нужно ---
-            if alg_type != 3 and only_active:
+            if alg_type != 3 and only_active and not in_avito == "всегда":
                 product_id = str(row_data.get("Id (сорт)", "")).strip()
                 # if product_id.startswith(("2m", "3m")):
                 #     product_id = product_id[2:].strip()
@@ -1347,7 +1347,11 @@ class AvitoFilesHandler:
                 # если требуется проверка по конкретному городу
                 if alg_type == 1:
                     address_str = str(row_data.get(f"{code}: Address", ""))
-                    found_city = next((city for city in city_abbreviations.keys() if city in address_str), None)
+                    found_city = None
+                    for city in city_abbreviations.keys():
+                        if (city in address_str) and not (city == "Краснодар" and "Краснодарская ул." in address_str):
+                            found_city = city
+                    # found_city = next((city for city in city_abbreviations.keys() if city in address_str), None)
                     if not found_city:
                         continue
                     abbreviation = city_abbreviations[found_city]
@@ -1391,175 +1395,175 @@ class AvitoFilesHandler:
 
 
     
-    def create_avito_file_000(self, code, goods_data, article_sums, price, only_active=True):
-        pprint(goods_data)
-        # Копируем шаблон в новую директорию
-        avito_template = self.settings["Настройки"]["Шаблон_для_Авито"]
-        if only_active:
-            new_file_path = self.settings["Авито"][code]["Путь_сохранения_Только_в_наличии"]
-        else:
-            new_file_path = self.settings["Авито"][code]["Путь_сохранения_Все_товары"]
-        shutil.copy(avito_template, new_file_path)
+    # def create_avito_file_000(self, code, goods_data, article_sums, price, only_active=True):
+    #     pprint(goods_data)
+    #     # Копируем шаблон в новую директорию
+    #     avito_template = self.settings["Настройки"]["Шаблон_для_Авито"]
+    #     if only_active:
+    #         new_file_path = self.settings["Авито"][code]["Путь_сохранения_Только_в_наличии"]
+    #     else:
+    #         new_file_path = self.settings["Авито"][code]["Путь_сохранения_Все_товары"]
+    #     shutil.copy(avito_template, new_file_path)
 
-        # Открываем скопированный файл
-        wb = load_workbook(new_file_path)
-        sheet = wb.active
+    #     # Открываем скопированный файл
+    #     wb = load_workbook(new_file_path)
+    #     sheet = wb.active
 
-        # Вставляем данные в новый файл, начиная с определенной строки
-        row_n = 1  # Начинаем вставку со 2-й строки
+    #     # Вставляем данные в новый файл, начиная с определенной строки
+    #     row_n = 1  # Начинаем вставку со 2-й строки
 
-        # Получаем заголовки из первой строки, чтобы сопоставить с row_data
-        headers = [cell.value for cell in sheet[1]]
-        pprint(headers)
+    #     # Получаем заголовки из первой строки, чтобы сопоставить с row_data
+    #     headers = [cell.value for cell in sheet[1]]
+    #     pprint(headers)
 
-        # Считываем из настроек параметры
-        email = self.settings["Авито"][code]["EMail"]
-        company_name = self.settings["Авито"][code]["CompanyName"]
-        category = self.settings["Авито"][code]["Category"]
+    #     # Считываем из настроек параметры
+    #     email = self.settings["Авито"][code]["EMail"]
+    #     company_name = self.settings["Авито"][code]["CompanyName"]
+    #     category = self.settings["Авито"][code]["Category"]
 
-        avito_date_end_str = (date.today() + timedelta(days=30)).strftime("%Y-%m-%dT00:00:00")
+    #     avito_date_end_str = (date.today() + timedelta(days=30)).strftime("%Y-%m-%dT00:00:00")
 
-        for row_data in goods_data:
-            if row_data[f'{code}: AvitoId'] not in [None, '', 0]:
-                row_n += 1  # Переходим к следующей строке
-                for col_index, header in enumerate(headers):
-                    col_n = col_index + 1
-                    if header in row_data:  # Проверяем, есть ли заголовок в row_data
-                        # Записываем данные в соответствующую ячейку
-                        sheet.cell(
-                            row=row_n, column=col_n).value = row_data[header]
-                    # По коду ищем нужные данные
-                    elif f'{code}: {header}' in row_data:
-                        # Записываем данные в соответствующую ячейку
-                        sheet.cell(row=row_n, column=col_n).value = row_data[f'{code}: {header}']
-                    elif header == 'EMail':
-                        sheet.cell(row=row_n, column=col_n).value = email
-                    elif header == 'CompanyName':
-                        sheet.cell(
-                            row=row_n, column=col_n).value = company_name
-                    elif header == 'Category':
-                        sheet.cell(row=row_n, column=col_n).value = category
-                    elif header == 'ListingFee':
-                        sheet.cell(row=row_n, column=col_n).value = "Package"
-                    elif header == 'Condition':
-                        sheet.cell(row=row_n, column=col_n).value = "Новое"
-                    elif header == 'AdType':
-                        sheet.cell(row=row_n, column=col_n).value = "Товар от производителя"
-                    elif header == 'AvitoDateEnd':
-                        sheet.cell(row=row_n, column=col_n).value = avito_date_end_str
-                # Проверяем AvitoStatus
-                if sheet.cell(row=row_n, column=4).value == "Активно":
-                    if sheet.cell(row=row_n, column=1).value in article_sums:
-                        if article_sums[sheet.cell(row=row_n, column=1).value] == 0:
-                            sheet.cell(
-                                row=row_n, column=4).value = "Снято с публикации"
-                    else:
-                        sheet.cell(
-                            row=row_n, column=4).value == "Снято с публикации"
+    #     for row_data in goods_data:
+    #         if row_data[f'{code}: AvitoId'] not in [None, '', 0]:
+    #             row_n += 1  # Переходим к следующей строке
+    #             for col_index, header in enumerate(headers):
+    #                 col_n = col_index + 1
+    #                 if header in row_data:  # Проверяем, есть ли заголовок в row_data
+    #                     # Записываем данные в соответствующую ячейку
+    #                     sheet.cell(
+    #                         row=row_n, column=col_n).value = row_data[header]
+    #                 # По коду ищем нужные данные
+    #                 elif f'{code}: {header}' in row_data:
+    #                     # Записываем данные в соответствующую ячейку
+    #                     sheet.cell(row=row_n, column=col_n).value = row_data[f'{code}: {header}']
+    #                 elif header == 'EMail':
+    #                     sheet.cell(row=row_n, column=col_n).value = email
+    #                 elif header == 'CompanyName':
+    #                     sheet.cell(
+    #                         row=row_n, column=col_n).value = company_name
+    #                 elif header == 'Category':
+    #                     sheet.cell(row=row_n, column=col_n).value = category
+    #                 elif header == 'ListingFee':
+    #                     sheet.cell(row=row_n, column=col_n).value = "Package"
+    #                 elif header == 'Condition':
+    #                     sheet.cell(row=row_n, column=col_n).value = "Новое"
+    #                 elif header == 'AdType':
+    #                     sheet.cell(row=row_n, column=col_n).value = "Товар от производителя"
+    #                 elif header == 'AvitoDateEnd':
+    #                     sheet.cell(row=row_n, column=col_n).value = avito_date_end_str
+    #             # Проверяем AvitoStatus
+    #             if sheet.cell(row=row_n, column=4).value == "Активно":
+    #                 if sheet.cell(row=row_n, column=1).value in article_sums:
+    #                     if article_sums[sheet.cell(row=row_n, column=1).value] == 0:
+    #                         sheet.cell(
+    #                             row=row_n, column=4).value = "Снято с публикации"
+    #                 else:
+    #                     sheet.cell(
+    #                         row=row_n, column=4).value == "Снято с публикации"
 
-        # Производим очистку по наличию на складах
-        # Получаем настройки аббревиатур городов
-        # cities = self.settings["Аббревиатуры городов"]
-        # cities["Москва"]["Аббревиатура"] = "МСК"
-        # Получаем список городов со складами
-        alg_type = self.settings["Авито"][code]["Остатки"]
-        if alg_type != 3 and only_active:
-            # Получаем коды городов
-            cities = self.settings["Аббревиатуры городов"]
+    #     # Производим очистку по наличию на складах
+    #     # Получаем настройки аббревиатур городов
+    #     # cities = self.settings["Аббревиатуры городов"]
+    #     # cities["Москва"]["Аббревиатура"] = "МСК"
+    #     # Получаем список городов со складами
+    #     alg_type = self.settings["Авито"][code]["Остатки"]
+    #     if alg_type != 3 and only_active:
+    #         # Получаем коды городов
+    #         cities = self.settings["Аббревиатуры городов"]
 
-            # Создаем словарь для быстрого поиска аббревиатур по названию города
-            city_abbreviations = {}
-            for city_name, city_data in cities.items():
-                if "Аббревиатура" in city_data:
-                    city_abbreviations[city_name] = city_data["Аббревиатура"]
-            abbreviations = list(city_abbreviations.values())        
-            city_abbreviations["Москва"] = "МСК"
+    #         # Создаем словарь для быстрого поиска аббревиатур по названию города
+    #         city_abbreviations = {}
+    #         for city_name, city_data in cities.items():
+    #             if "Аббревиатура" in city_data:
+    #                 city_abbreviations[city_name] = city_data["Аббревиатура"]
+    #         abbreviations = list(city_abbreviations.values())        
+    #         city_abbreviations["Москва"] = "МСК"
 
-            # Убираем из прайса все позиции, где пустые склады
-            filtered_price = [
-                item for item in price 
-                if any(
-                    item.get(abbr) and item[abbr] > 0
-                    for abbr in abbreviations
-                )
-            ]
+    #         # Убираем из прайса все позиции, где пустые склады
+    #         filtered_price = [
+    #             item for item in price 
+    #             if any(
+    #                 item.get(abbr) and item[abbr] > 0
+    #                 for abbr in abbreviations
+    #             )
+    #         ]
 
-            # Создаем словари для быстрого поиска
-            price_by_id = {str(item["ID_01"]).strip(): item for item in filtered_price if item.get("ID_01")}
+    #         # Создаем словари для быстрого поиска
+    #         price_by_id = {str(item["ID_01"]).strip(): item for item in filtered_price if item.get("ID_01")}
             
-            # Находим индексы колонок
-            header_to_index = {header: idx + 1 for idx, header in enumerate(headers)}
-            address_col_idx = header_to_index.get("Address")
-            id_col_idx = header_to_index.get("Id")
-            print('============')
-            pprint(header_to_index)
-            pprint(id_col_idx)
+    #         # Находим индексы колонок
+    #         header_to_index = {header: idx + 1 for idx, header in enumerate(headers)}
+    #         address_col_idx = header_to_index.get("Address")
+    #         id_col_idx = header_to_index.get("Id")
+    #         # print('============')
+    #         # pprint(header_to_index)
+    #         # pprint(id_col_idx)
             
-            if address_col_idx and id_col_idx:
-                rows_to_delete = []
+    #         if address_col_idx and id_col_idx:
+    #             rows_to_delete = []
                 
-                for row in sheet.iter_rows(min_row=2):
-                    address_value = row[address_col_idx - 1].value
-                    id_value = row[id_col_idx - 1].value
+    #             for row in sheet.iter_rows(min_row=2):
+    #                 address_value = row[address_col_idx - 1].value
+    #                 id_value = row[id_col_idx - 1].value
                     
-                    # Проверяем условия
-                    if not address_value or not id_value:
-                        rows_to_delete.append(row[0].row)
-                        continue
+    #                 # Проверяем условия
+    #                 if not address_value or not id_value:
+    #                     rows_to_delete.append(row[0].row)
+    #                     continue
 
-                    id_str = str(id_value)
+    #                 id_str = str(id_value)
 
-                    product_id = id_str
-                    if product_id[:2] in ('2m', '3m'):
-                        product_id = product_id[2:].strip()
+    #                 product_id = id_str
+    #                 if product_id[:2] in ('2m', '3m'):
+    #                     product_id = product_id[2:].strip()
                     
-                    # Проверяем наличие товара
-                    if product_id not in price_by_id:
-                        rows_to_delete.append(row[0].row)
-                        continue
+    #                 # Проверяем наличие товара
+    #                 if product_id not in price_by_id:
+    #                     rows_to_delete.append(row[0].row)
+    #                     continue
 
-                    # Проверяем наличие товара конкретно в этом городе
-                    if alg_type == 1:
-                        # Ищем город в адресе
-                        address_str = str(address_value)
+    #                 # Проверяем наличие товара конкретно в этом городе
+    #                 if alg_type == 1:
+    #                     # Ищем город в адресе
+    #                     address_str = str(address_value)
 
-                        found_city = next((city for city in city_abbreviations.keys() if city in address_str), None)
+    #                     found_city = next((city for city in city_abbreviations.keys() if city in address_str), None)
                         
-                        if not found_city or len(id_str) < 3:
-                            rows_to_delete.append(row[0].row)
-                            continue
+    #                     if not found_city or len(id_str) < 3:
+    #                         rows_to_delete.append(row[0].row)
+    #                         continue
 
-                        abbreviation = city_abbreviations[found_city]
+    #                     abbreviation = city_abbreviations[found_city]
 
-                        stock_quantity = price_by_id[product_id].get(abbreviation, 0)
-                        if not stock_quantity or stock_quantity <= 0:
-                            rows_to_delete.append(row[0].row)
+    #                     stock_quantity = price_by_id[product_id].get(abbreviation, 0)
+    #                     if not stock_quantity or stock_quantity <= 0:
+    #                         rows_to_delete.append(row[0].row)
                 
-                # Удаляем строки
-                for row_index in reversed(rows_to_delete):
-                    sheet.delete_rows(row_index)
+    #             # Удаляем строки
+    #             for row_index in reversed(rows_to_delete):
+    #                 sheet.delete_rows(row_index)
 
         
-        # Удаляем то, что снято с публикации
-        # if only_active:
-        #     rows_to_delete = []
+    #     # Удаляем то, что снято с публикации
+    #     # if only_active:
+    #     #     rows_to_delete = []
 
-        #     # Ищем строки для удаления
-        #     for row in sheet.iter_rows(min_row=2):  # Начинаем со второй строки
-        #         # Проверяем 4-й столбец (индекс 3)
-        #         if row[3].value != "Активно":
-        #             # Сохраняем номер строки для удаления
-        #             rows_to_delete.append(row[0].row)
+    #     #     # Ищем строки для удаления
+    #     #     for row in sheet.iter_rows(min_row=2):  # Начинаем со второй строки
+    #     #         # Проверяем 4-й столбец (индекс 3)
+    #     #         if row[3].value != "Активно":
+    #     #             # Сохраняем номер строки для удаления
+    #     #             rows_to_delete.append(row[0].row)
 
-        #     # Удаляем строки в обратном порядке
-        #     for row_index in reversed(rows_to_delete):
-        #         sheet.delete_rows(row_index)
+    #     #     # Удаляем строки в обратном порядке
+    #     #     for row_index in reversed(rows_to_delete):
+    #     #         sheet.delete_rows(row_index)
 
-        # Удаляем столбец артикула
-        sheet.delete_cols(1, 1)  # Удаляем столбец
+    #     # Удаляем столбец артикула
+    #     sheet.delete_cols(1, 1)  # Удаляем столбец
 
-        # Сохраняем изменения в новом файле
-        wb.save(new_file_path)
+    #     # Сохраняем изменения в новом файле
+    #     wb.save(new_file_path)
 
     def create_all_avito_files(self, only_active=True):
         goods_data = self.excel_to_list(
